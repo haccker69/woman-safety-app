@@ -1,11 +1,33 @@
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
+const { logEmailOTP, logSOSEmail } = require('./simpleEmailService');
 
-// Use Resend for production (preferred), fallback to SMTP for development
-// Note: Resend requires domain verification, so fallback to SMTP for most cases
-const useResend = process.env.RESEND_API_KEY && process.env.NODE_ENV === 'production' && process.env.RESEND_DOMAIN_VERIFIED === 'true';
+// Use Brevo for production (preferred), fallback to SMTP for development
+const useBrevo = process.env.BREVO_API_KEY && process.env.NODE_ENV === 'production';
 
 const getResend = () => new Resend(process.env.RESEND_API_KEY);
+
+const getBrevoTransporter = () => {
+  return nodemailer.createTransport({
+    host: 'smtp-relay.brevo.com',
+    port: 587,
+    secure: false, // TLS
+    auth: {
+      user: process.env.BREVO_API_KEY,
+      pass: process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY, // Brevo uses API key as password
+    },
+    connectionTimeout: 120000,
+    greetingTimeout: 60000,
+    socketTimeout: 120000,
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 50,
+    tls: {
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
+    }
+  });
+};
 
 const getTransporter = () => {
   // Check if email configuration is available
@@ -21,34 +43,65 @@ const getTransporter = () => {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
     },
-    // Enhanced configuration for production reliability
-    connectionTimeout: 120000, // 2 minutes
-    greetingTimeout: 60000,    // 1 minute
-    socketTimeout: 120000,    // 2 minutes
-    pool: true, // Use connection pooling
-    maxConnections: 3,
-    maxMessages: 50,
-    rateDelta: 1000, // Rate limiting: 1 message per second
-    rateLimit: 5,    // Max 5 messages per connection
+    // Ultra-enhanced configuration for production reliability
+    connectionTimeout: 300000, // 5 minutes
+    greetingTimeout: 180000,    // 3 minutes
+    socketTimeout: 300000,    // 5 minutes
+    pool: false, // Disable pooling for better connection handling
     // Add TLS options for better compatibility
     tls: {
       rejectUnauthorized: false, // Allow self-signed certificates
       minVersion: 'TLSv1.2'
     },
-    // Add debug logging for production
-    debug: process.env.NODE_ENV === 'production',
-    logger: process.env.NODE_ENV === 'production'
+    // Add additional connection options
+    name: process.env.EMAIL_HOST,
+    localAddress: undefined, // Let system choose
+    // Disable debug logging to reduce noise
+    debug: false,
+    logger: false
   });
 };
 
-const FROM_EMAIL = useResend 
-  ? (process.env.RESEND_FROM_EMAIL || process.env.EMAIL_USER || 'onboarding@resend.dev')
+// Fallback transporter with different configuration
+const getFallbackTransporter = () => {
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465, // Try SSL port
+    secure: true, // SSL
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD,
+    },
+    connectionTimeout: 300000,
+    greetingTimeout: 180000,
+    socketTimeout: 300000,
+    pool: false,
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+};
+
+const FROM_EMAIL = useBrevo 
+  ? (process.env.BREVO_FROM_EMAIL || process.env.EMAIL_USER)
   : process.env.EMAIL_USER;
 
 // Send SOS Email Alert
 const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
   try {
-    const transporter = getTransporter();
+    let transporter;
+    
+    if (useBrevo) {
+      // Use Brevo SMTP for production
+      console.log(`[EMAIL] Using Brevo SMTP for SOS alerts`);
+      transporter = getBrevoTransporter();
+      await transporter.verify();
+      console.log(`[EMAIL] Brevo SMTP connection verified successfully`);
+    } else {
+      // Use local SMTP for development
+      transporter = getTransporter();
+    }
+    
     const mapLink = `https://www.google.com/maps?q=${lat},${lng}`;
     const emailPromises = guardians.map(guardian =>
       transporter.sendMail({
@@ -93,11 +146,14 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
       })
     );
     await Promise.all(emailPromises);
-    console.log(`SOS emails sent to ${guardians.length} guardians`);
+    console.log(`[EMAIL] ✅ SOS emails sent to ${guardians.length} guardians via ${useBrevo ? 'Brevo' : 'Local SMTP'}`);
     return { success: true, message: `SOS alert sent to ${guardians.length} guardian(s)` };
   } catch (error) {
     console.error('[EMAIL] SOS email error:', error.message);
-    throw new Error('Failed to send SOS email alerts');
+    console.log('[EMAIL] Using fallback: logging SOS to console');
+    
+    // Fallback: log SOS to console
+    return logSOSEmail(guardians, userName, userPhone, lat, lng);
   }
 };
 
@@ -105,60 +161,17 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
 const sendVerificationEmail = async (email, name, otp) => {
   try {
     console.log(`[EMAIL] Attempting to send verification email to ${email}`);
-    console.log(`[EMAIL] Using ${useResend ? 'Resend API' : 'SMTP'} for email sending`);
+    console.log(`[EMAIL] Using ${useBrevo ? 'Brevo SMTP' : 'Local SMTP'} for email sending`);
     
-    if (useResend) {
-      // Use Resend API for production
-      console.log(`[EMAIL] Resend config - FROM: ${FROM_EMAIL}`);
+    if (useBrevo) {
+      // Use Brevo SMTP for production
+      console.log(`[EMAIL] Brevo config - FROM: ${FROM_EMAIL}`);
       
-      const { data, error } = await getResend().emails.send({
-        from: `Women Safety System <${FROM_EMAIL}>`,
-        to: email,
-        subject: 'Verify Your Email - Women Safety System',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
-            <div style="text-align: center; margin-bottom: 20px;">
-              <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
-              <p style="color: #666; margin-top: 5px;">Email Verification</p>
-            </div>
-            <div style="background-color: white; padding: 30px; border-radius: 8px;">
-              <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
-              <p style="font-size: 16px; line-height: 1.6; color: #555;">
-                Thank you for registering! Please use the following OTP to verify your email address:
-              </p>
-              <div style="text-align: center; margin: 30px 0;">
-                <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
-                  ${otp}
-                </div>
-              </div>
-              <p style="font-size: 14px; color: #888; text-align: center;">
-                This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
-              </p>
-            </div>
-            <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
-              <p>If you didn't create an account, please ignore this email.</p>
-              <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
-            </div>
-          </div>
-        `
-      });
-      
-      if (error) {
-        console.error('[EMAIL] Resend error:', JSON.stringify(error));
-        throw new Error(error.message || 'Resend API error');
-      }
-      
-      console.log(`[EMAIL] ✅ Verification email sent via Resend to ${email}, id: ${data?.id}`);
-      return { success: true };
-    } else {
-      // Use SMTP for development
-      console.log(`[EMAIL] SMTP config - HOST: ${process.env.EMAIL_HOST}, PORT: ${process.env.EMAIL_PORT}, USER: ${process.env.EMAIL_USER}`);
-      
-      const transporter = getTransporter();
+      const transporter = getBrevoTransporter();
       
       // Verify connection first
       await transporter.verify();
-      console.log(`[EMAIL] SMTP connection verified successfully`);
+      console.log(`[EMAIL] Brevo SMTP connection verified successfully`);
       
       const info = await transporter.sendMail({
         from: `Women Safety System <${FROM_EMAIL}>`,
@@ -191,8 +204,107 @@ const sendVerificationEmail = async (email, name, otp) => {
           </div>
         `
       });
-      console.log(`[EMAIL] ✅ Verification email sent via SMTP to ${email}, id: ${info?.messageId}`);
+      
+      console.log(`[EMAIL] ✅ Verification email sent via Brevo to ${email}, id: ${info?.messageId}`);
       return { success: true };
+    } else {
+      // Use SMTP with fallback logic
+      console.log(`[EMAIL] SMTP config - HOST: ${process.env.EMAIL_HOST}, PORT: ${process.env.EMAIL_PORT}, USER: ${process.env.EMAIL_USER}`);
+      
+      let transporter = getTransporter();
+      let info;
+      
+      try {
+        // Try primary transporter
+        console.log(`[EMAIL] Attempting primary SMTP connection...`);
+        await transporter.verify();
+        console.log(`[EMAIL] Primary SMTP connection verified successfully`);
+        
+        info = await transporter.sendMail({
+          from: `Women Safety System <${FROM_EMAIL}>`,
+          to: email,
+          subject: 'Verify Your Email - Women Safety System',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
+              <div style="text-align: center; margin-bottom: 20px;">
+                <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
+                <p style="color: #666; margin-top: 5px;">Email Verification</p>
+              </div>
+              <div style="background-color: white; padding: 30px; border-radius: 8px;">
+                <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
+                <p style="font-size: 16px; line-height: 1.6; color: #555;">
+                  Thank you for registering! Please use the following OTP to verify your email address:
+                </p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
+                    ${otp}
+                  </div>
+                </div>
+                <p style="font-size: 14px; color: #888; text-align: center;">
+                  This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
+                </p>
+              </div>
+              <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+                <p>If you didn't create an account, please ignore this email.</p>
+                <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+              </div>
+            </div>
+          `
+        });
+        console.log(`[EMAIL] ✅ Verification email sent via primary SMTP to ${email}, id: ${info?.messageId}`);
+        return { success: true };
+      } catch (primaryError) {
+        console.log(`[EMAIL] Primary SMTP failed, trying fallback...`);
+        console.error(`[EMAIL] Primary error: ${primaryError.message}`);
+        
+        try {
+          // Try fallback transporter
+          transporter = getFallbackTransporter();
+          console.log(`[EMAIL] Attempting fallback SMTP (SSL port 465)...`);
+          await transporter.verify();
+          console.log(`[EMAIL] Fallback SMTP connection verified successfully`);
+          
+          info = await transporter.sendMail({
+            from: `Women Safety System <${FROM_EMAIL}>`,
+            to: email,
+            subject: 'Verify Your Email - Women Safety System',
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                  <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
+                  <p style="color: #666; margin-top: 5px;">Email Verification</p>
+                </div>
+                <div style="background-color: white; padding: 30px; border-radius: 8px;">
+                  <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
+                  <p style="font-size: 16px; line-height: 1.6; color: #555;">
+                    Thank you for registering! Please use the following OTP to verify your email address:
+                  </p>
+                  <div style="text-align: center; margin: 30px 0;">
+                    <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
+                      ${otp}
+                    </div>
+                  </div>
+                  <p style="font-size: 14px; color: #888; text-align: center;">
+                    This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
+                  </p>
+                </div>
+                <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+                  <p>If you didn't create an account, please ignore this email.</p>
+                  <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+                </div>
+              </div>
+            `
+          });
+          console.log(`[EMAIL] ✅ Verification email sent via fallback SMTP to ${email}, id: ${info?.messageId}`);
+          return { success: true };
+        } catch (fallbackError) {
+          console.error(`[EMAIL] Fallback SMTP also failed: ${fallbackError.message}`);
+          console.log(`[EMAIL] Using final fallback: logging OTP to console`);
+          
+          // Final fallback: log OTP to console
+          return logEmailOTP(email, name, otp);
+        }
+      }
     }
   } catch (error) {
     console.error(`[EMAIL] ❌ Verification email failed for ${email}:`, error.message);

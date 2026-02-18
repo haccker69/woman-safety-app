@@ -106,16 +106,25 @@ Add to your server's environment file or deployment script.
 - Check email service logs
 
 ## Recommended Solution
-For production reliability, use **Enhanced SMTP Configuration**:
+For production reliability, use **Brevo SMTP** (Free tier available):
 
-### Step 1: Use Gmail App Password
-1. Enable 2-factor authentication on your Gmail
-2. Go to Google Account settings → Security → App Passwords
-3. Generate a new app password for "Mail"
-4. Use this 16-character password (not your regular password)
+### Step 1: Set up Brevo Account
+1. Go to https://www.brevo.com and create a free account
+2. Verify your email address
+3. Go to SMTP & API → Your API Keys → Generate New Key
+4. Copy your v3 API key (starts with `xkeysib-`)
 
 ### Step 2: Set Production Environment Variables
 Add these to your deployment platform:
+```bash
+NODE_ENV=production
+BREVO_API_KEY=xkeysib-your_api_key_here
+BREVO_FROM_EMAIL=wommansafety@gmail.com
+EMAIL_USER=wommansafety@gmail.com
+```
+
+### Alternative: Enhanced Gmail SMTP
+If you prefer Gmail:
 ```bash
 NODE_ENV=production
 EMAIL_HOST=smtp.gmail.com
