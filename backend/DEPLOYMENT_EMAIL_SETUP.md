@@ -11,9 +11,19 @@ Production environments often have network restrictions that prevent direct SMTP
 ### Option 1: Use Email Service API (Recommended)
 Instead of direct SMTP, use a dedicated email service:
 
-#### Resend (Easiest)
+#### Resend with Gmail (Easiest - No Domain Required)
 ```bash
 # Environment Variables
+NODE_ENV=production
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=wommansafety@gmail.com
+EMAIL_USER=wommansafety@gmail.com
+```
+
+#### Resend with Custom Domain (Optional)
+```bash
+# Environment Variables
+NODE_ENV=production
 RESEND_API_KEY=re_your_api_key_here
 RESEND_FROM_EMAIL=your_verified_domain@yourdomain.com
 ```
@@ -96,10 +106,31 @@ Add to your server's environment file or deployment script.
 - Check email service logs
 
 ## Recommended Solution
-For production reliability, use **Resend API**:
-1. Sign up at https://resend.com
-2. Get API key
-3. Set environment variables
-4. Update emailService.js to use Resend (revert to previous version)
+For production reliability, use **Resend API with Gmail**:
 
-This provides better deliverability and avoids network restrictions.
+### Step 1: Sign up for Resend
+1. Go to https://resend.com
+2. Create a free account
+3. Get your API key (starts with `re_`)
+
+### Step 2: Add Gmail to Resend
+1. In Resend dashboard, go to "Domains" 
+2. Click "Add Domain"
+3. Choose "Use Gmail" option
+4. Verify your Gmail address (wommansafety@gmail.com)
+
+### Step 3: Set Production Environment Variables
+Add these to your deployment platform:
+```bash
+NODE_ENV=production
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=wommansafety@gmail.com
+EMAIL_USER=wommansafety@gmail.com
+```
+
+### Step 4: Deploy
+1. Push updated code to GitHub
+2. Deploy with new environment variables
+3. Test email verification on deployed site
+
+This provides better deliverability and avoids network restrictions without needing a custom domain!

@@ -31,7 +31,7 @@ const getTransporter = () => {
 };
 
 const FROM_EMAIL = useResend 
-  ? (process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev')
+  ? (process.env.RESEND_FROM_EMAIL || process.env.EMAIL_USER || 'onboarding@resend.dev')
   : process.env.EMAIL_USER;
 
 // Send SOS Email Alert
