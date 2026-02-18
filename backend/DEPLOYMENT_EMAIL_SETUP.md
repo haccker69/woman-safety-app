@@ -106,7 +106,7 @@ Add to your server's environment file or deployment script.
 - Check email service logs
 
 ## Recommended Solution
-For production reliability, use **Brevo SMTP** (Free tier available):
+For production reliability, use **Brevo REST API** (Works in all environments):
 
 ### Step 1: Set up Brevo Account
 1. Go to https://www.brevo.com and create a free account
@@ -122,6 +122,13 @@ BREVO_API_KEY=xkeysib-your_api_key_here
 BREVO_FROM_EMAIL=wommansafety@gmail.com
 EMAIL_USER=wommansafety@gmail.com
 ```
+
+### Why Brevo REST API?
+- ✅ **No SMTP Connection Issues** (works behind firewalls)
+- ✅ **No Domain Verification Required**
+- ✅ **Works in All Cloud Environments** (Render, Vercel, etc.)
+- ✅ **Free Tier:** 300 emails/day
+- ✅ **Fast & Reliable** (HTTP vs SMTP)
 
 ### Alternative: Enhanced Gmail SMTP
 If you prefer Gmail:
