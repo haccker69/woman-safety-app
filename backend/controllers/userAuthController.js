@@ -58,8 +58,10 @@ const registerUser = async (req, res) => {
     // Send verification email
     try {
       await sendVerificationEmail(email, name, otp);
+      console.log(`[REGISTER] Verification email sent to ${email}`);
     } catch (emailErr) {
-      console.error('Failed to send verification email:', emailErr);
+      console.error('[REGISTER] Failed to send verification email:', emailErr.message);
+      console.error('[REGISTER] SMTP config - HOST:', process.env.EMAIL_HOST, 'PORT:', process.env.EMAIL_PORT, 'USER:', process.env.EMAIL_USER);
     }
 
     res.status(201).json({

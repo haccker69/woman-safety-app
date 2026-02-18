@@ -138,8 +138,9 @@ const sendVerificationEmail = async (email, name, otp) => {
     console.log(`Verification email sent to ${email}`);
     return { success: true };
   } catch (error) {
-    console.error('Verification email error:', error);
-    throw new Error('Failed to send verification email');
+    console.error('[EMAIL] Verification email error code:', error.code);
+    console.error('[EMAIL] Verification email error message:', error.message);
+    throw error;
   }
 };
 

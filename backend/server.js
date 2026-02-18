@@ -54,6 +54,19 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Email test route (for debugging deployment)
+app.get('/api/health/email-test', async (req, res) => {
+  const testTo = req.query.to;
+  if (!testTo) return res.status(400).json({ message: 'Add ?to=youremail@gmail.com' });
+  try {
+    const { sendVerificationEmail } = require('./utils/emailService');
+    await sendVerificationEmail(testTo, 'Test User', '123456');
+    res.json({ success: true, message: `Test email sent to ${testTo}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, code: err.code });
+  }
+});
+
 // Error handler (must be after routes)
 app.use(errorHandler);
 
