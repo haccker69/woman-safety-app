@@ -2,14 +2,18 @@ const nodemailer = require('nodemailer');
 
 // Create reusable transporter
 const createTransporter = () => {
+  const port = parseInt(process.env.EMAIL_PORT) || 465;
   return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: false, // true for 465, false for other ports
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: port,
+    secure: port === 465, // true for 465, false for 587
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD
-    }
+    },
+    connectionTimeout: 10000,  // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 15000
   });
 };
 
