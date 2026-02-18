@@ -1,15 +1,26 @@
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
-const getResend = () => new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+const getTransporter = () => {
+  return nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: process.env.EMAIL_PORT,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD,
+    },
+  });
+};
+
+const FROM_EMAIL = process.env.EMAIL_USER;
 
 // Send SOS Email Alert
 const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
   try {
-    const resend = getResend();
+    const transporter = getTransporter();
     const mapLink = `https://www.google.com/maps?q=${lat},${lng}`;
     const emailPromises = guardians.map(guardian =>
-      resend.emails.send({
+      transporter.sendMail({
         from: `Women Safety System <${FROM_EMAIL}>`,
         to: guardian.email,
         subject: '🚨 EMERGENCY SOS ALERT 🚨',
@@ -62,8 +73,8 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
 // Send Email Verification OTP
 const sendVerificationEmail = async (email, name, otp) => {
   try {
-    const resend = getResend();
-    const { data, error } = await resend.emails.send({
+    const transporter = getTransporter();
+    const info = await transporter.sendMail({
       from: `Women Safety System <${FROM_EMAIL}>`,
       to: email,
       subject: 'Verify Your Email - Women Safety System',
@@ -94,11 +105,7 @@ const sendVerificationEmail = async (email, name, otp) => {
         </div>
       `
     });
-    if (error) {
-      console.error('[EMAIL] Resend error:', JSON.stringify(error));
-      throw new Error(error.message || 'Resend API error');
-    }
-    console.log(`[EMAIL] Verification email sent to ${email}, id: ${data?.id}`);
+    console.log(`[EMAIL] Verification email sent to ${email}, id: ${info?.messageId}`);
     return { success: true };
   } catch (error) {
     console.error('[EMAIL] Verification email failed:', error.message);
