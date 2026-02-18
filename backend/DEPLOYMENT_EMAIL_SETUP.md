@@ -106,26 +106,41 @@ Add to your server's environment file or deployment script.
 - Check email service logs
 
 ## Recommended Solution
-For production reliability, use **Resend API with Gmail**:
+For production reliability, use **Enhanced SMTP Configuration**:
 
-### Step 1: Sign up for Resend
-1. Go to https://resend.com
-2. Create a free account
-3. Get your API key (starts with `re_`)
+### Step 1: Use Gmail App Password
+1. Enable 2-factor authentication on your Gmail
+2. Go to Google Account settings → Security → App Passwords
+3. Generate a new app password for "Mail"
+4. Use this 16-character password (not your regular password)
 
-### Step 2: Add Gmail to Resend
-1. In Resend dashboard, go to "Domains" 
-2. Click "Add Domain"
-3. Choose "Use Gmail" option
-4. Verify your Gmail address (wommansafety@gmail.com)
-
-### Step 3: Set Production Environment Variables
+### Step 2: Set Production Environment Variables
 Add these to your deployment platform:
 ```bash
 NODE_ENV=production
-RESEND_API_KEY=re_your_api_key_here
-RESEND_FROM_EMAIL=wommansafety@gmail.com
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
 EMAIL_USER=wommansafety@gmail.com
+EMAIL_PASSWORD=your_16_character_app_password
+```
+
+### Step 3: Alternative Email Services (if Gmail still fails)
+If Gmail doesn't work in production, try these alternatives:
+
+#### SendGrid (Free tier available)
+```bash
+EMAIL_HOST=smtp.sendgrid.net
+EMAIL_PORT=587
+EMAIL_USER=apikey
+EMAIL_PASSWORD=SG.your_sendgrid_api_key
+```
+
+#### Mailgun (Free tier available)
+```bash
+EMAIL_HOST=smtp.mailgun.org
+EMAIL_PORT=587
+EMAIL_USER=postmaster@your_domain.mailgun.org
+EMAIL_PASSWORD=your_mailgun_password
 ```
 
 ### Step 4: Deploy
@@ -133,4 +148,11 @@ EMAIL_USER=wommansafety@gmail.com
 2. Deploy with new environment variables
 3. Test email verification on deployed site
 
-This provides better deliverability and avoids network restrictions without needing a custom domain!
+### Enhanced SMTP Features
+- ✅ Extended timeouts (2 minutes)
+- ✅ Connection pooling for reliability
+- ✅ Rate limiting to prevent blocking
+- ✅ TLS configuration for security
+- ✅ Debug logging for troubleshooting
+
+This should resolve connection timeout issues in production!

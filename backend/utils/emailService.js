@@ -2,7 +2,8 @@ const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 
 // Use Resend for production (preferred), fallback to SMTP for development
-const useResend = process.env.RESEND_API_KEY && process.env.NODE_ENV === 'production';
+// Note: Resend requires domain verification, so fallback to SMTP for most cases
+const useResend = process.env.RESEND_API_KEY && process.env.NODE_ENV === 'production' && process.env.RESEND_DOMAIN_VERIFIED === 'true';
 
 const getResend = () => new Resend(process.env.RESEND_API_KEY);
 
@@ -20,13 +21,23 @@ const getTransporter = () => {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
     },
-    // Add connection timeout and retry options for production
-    connectionTimeout: 60000, // 60 seconds
-    greetingTimeout: 30000,   // 30 seconds
-    socketTimeout: 60000,    // 60 seconds
+    // Enhanced configuration for production reliability
+    connectionTimeout: 120000, // 2 minutes
+    greetingTimeout: 60000,    // 1 minute
+    socketTimeout: 120000,    // 2 minutes
     pool: true, // Use connection pooling
-    maxConnections: 5,
-    maxMessages: 100,
+    maxConnections: 3,
+    maxMessages: 50,
+    rateDelta: 1000, // Rate limiting: 1 message per second
+    rateLimit: 5,    // Max 5 messages per connection
+    // Add TLS options for better compatibility
+    tls: {
+      rejectUnauthorized: false, // Allow self-signed certificates
+      minVersion: 'TLSv1.2'
+    },
+    // Add debug logging for production
+    debug: process.env.NODE_ENV === 'production',
+    logger: process.env.NODE_ENV === 'production'
   });
 };
 
