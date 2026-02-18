@@ -130,6 +130,21 @@ EMAIL_USER=wommansafety@gmail.com
 - ✅ **Free Tier:** 300 emails/day
 - ✅ **Fast & Reliable** (HTTP vs SMTP)
 
+### Alternative: SendGrid API (if Brevo not activated)
+If Brevo account activation takes time, use SendGrid:
+
+```bash
+NODE_ENV=production
+SENDGRID_API_KEY=SG.your_sendgrid_api_key_here
+SENDGRID_FROM_EMAIL=wommansafety@gmail.com
+EMAIL_USER=wommansafety@gmail.com
+```
+
+**Get SendGrid API Key:**
+1. Go to https://sendgrid.com (free account)
+2. Settings → API Keys → Create API Key
+3. Copy API key (starts with `SG.`)
+
 ### Alternative: Enhanced Gmail SMTP
 If you prefer Gmail:
 ```bash

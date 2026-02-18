@@ -3,8 +3,9 @@ const axios = require('axios');
 const { Resend } = require('resend');
 const { logEmailOTP, logSOSEmail } = require('./simpleEmailService');
 
-// Use Brevo for production (preferred), fallback to SMTP for development
+// Use Brevo for production (preferred), fallback to SendGrid if Brevo not activated
 const useBrevo = process.env.BREVO_API_KEY && process.env.NODE_ENV === 'production';
+const useSendGrid = process.env.SENDGRID_API_KEY && process.env.NODE_ENV === 'production';
 
 const getResend = () => new Resend(process.env.RESEND_API_KEY);
 
@@ -28,6 +29,42 @@ const getBrevoTransporter = () => {
       minVersion: 'TLSv1.2'
     }
   });
+};
+
+// SendGrid REST API function (works in all environments)
+const sendSendGridEmail = async (to, subject, htmlContent) => {
+  try {
+    const response = await axios.post(
+      'https://api.sendgrid.com/v3/mail/send',
+      {
+        personalizations: [{
+          to: [{ email: to }]
+        }],
+        from: {
+          email: FROM_EMAIL,
+          name: 'Women Safety System'
+        },
+        subject: subject,
+        content: [{
+          type: 'text/html',
+          value: htmlContent
+        }]
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    console.log(`[EMAIL] ✅ Email sent via SendGrid API to ${to}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EMAIL] SendGrid API error:', error.response?.data || error.message);
+    throw new Error(`SendGrid API failed: ${error.response?.data?.message || error.message}`);
+  }
 };
 
 // Brevo REST API function (works in all environments)
@@ -63,6 +100,14 @@ const sendBrevoEmail = async (to, subject, htmlContent) => {
     return { success: true, messageId: response.data?.messageId };
   } catch (error) {
     console.error('[EMAIL] Brevo API error:', error.response?.data || error.message);
+    
+    // If account not activated, try SendGrid fallback
+    if (error.response?.data?.message?.includes('SMTP account is not yet activated')) {
+      console.log(`[EMAIL] ⚠️ Brevo account not activated. Trying SendGrid fallback...`);
+      if (useSendGrid) {
+        return await sendSendGridEmail(to, subject, htmlContent);
+      }
+    }
     
     // If API key is invalid, fallback to console logging
     if (error.response?.data?.code === 'unauthorized' || error.response?.data?.message?.includes('Key not found')) {
@@ -130,7 +175,9 @@ const getFallbackTransporter = () => {
 
 const FROM_EMAIL = useBrevo 
   ? (process.env.BREVO_FROM_EMAIL || process.env.EMAIL_USER)
-  : process.env.EMAIL_USER;
+  : (useSendGrid 
+    ? (process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER)
+    : process.env.EMAIL_USER);
 
 // Send SOS Email Alert
 const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
@@ -283,6 +330,38 @@ const sendVerificationEmail = async (email, name, otp) => {
       `;
       
       return await sendBrevoEmail(email, 'Verify Your Email - Women Safety System', htmlContent);
+    } else if (useSendGrid) {
+      // Use SendGrid REST API as fallback
+      console.log(`[EMAIL] Using SendGrid REST API - FROM: ${FROM_EMAIL}`);
+      
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
+            <p style="color: #666; margin-top: 5px;">Email Verification</p>
+          </div>
+          <div style="background-color: white; padding: 30px; border-radius: 8px;">
+            <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
+            <p style="font-size: 16px; line-height: 1.6; color: #555;">
+              Thank you for registering! Please use the following OTP to verify your email address:
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
+                ${otp}
+              </div>
+            </div>
+            <p style="font-size: 14px; color: #888; text-align: center;">
+              This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
+            </p>
+          </div>
+          <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+            <p>If you didn't create an account, please ignore this email.</p>
+            <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+          </div>
+        </div>
+      `;
+      
+      return await sendSendGridEmail(email, 'Verify Your Email - Women Safety System', htmlContent);
     } else {
       // Use SMTP with fallback logic
       console.log(`[EMAIL] SMTP config - HOST: ${process.env.EMAIL_HOST}, PORT: ${process.env.EMAIL_PORT}, USER: ${process.env.EMAIL_USER}`);
