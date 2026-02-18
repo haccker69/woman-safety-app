@@ -1,18 +1,38 @@
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
+
+// Use Resend for production (preferred), fallback to SMTP for development
+const useResend = process.env.RESEND_API_KEY && process.env.NODE_ENV === 'production';
+
+const getResend = () => new Resend(process.env.RESEND_API_KEY);
 
 const getTransporter = () => {
+  // Check if email configuration is available
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    throw new Error('Email configuration missing. Please check EMAIL_HOST, EMAIL_USER, and EMAIL_PASSWORD environment variables.');
+  }
+
   return nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: false, // true for 465, false for other ports
+    port: parseInt(process.env.EMAIL_PORT) || 587,
+    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
     },
+    // Add connection timeout and retry options for production
+    connectionTimeout: 60000, // 60 seconds
+    greetingTimeout: 30000,   // 30 seconds
+    socketTimeout: 60000,    // 60 seconds
+    pool: true, // Use connection pooling
+    maxConnections: 5,
+    maxMessages: 100,
   });
 };
 
-const FROM_EMAIL = process.env.EMAIL_USER;
+const FROM_EMAIL = useResend 
+  ? (process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev')
+  : process.env.EMAIL_USER;
 
 // Send SOS Email Alert
 const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
@@ -73,43 +93,115 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
 // Send Email Verification OTP
 const sendVerificationEmail = async (email, name, otp) => {
   try {
-    const transporter = getTransporter();
-    const info = await transporter.sendMail({
-      from: `Women Safety System <${FROM_EMAIL}>`,
-      to: email,
-      subject: 'Verify Your Email - Women Safety System',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
-            <p style="color: #666; margin-top: 5px;">Email Verification</p>
-          </div>
-          <div style="background-color: white; padding: 30px; border-radius: 8px;">
-            <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
-            <p style="font-size: 16px; line-height: 1.6; color: #555;">
-              Thank you for registering! Please use the following OTP to verify your email address:
-            </p>
-            <div style="text-align: center; margin: 30px 0;">
-              <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
-                ${otp}
-              </div>
+    console.log(`[EMAIL] Attempting to send verification email to ${email}`);
+    console.log(`[EMAIL] Using ${useResend ? 'Resend API' : 'SMTP'} for email sending`);
+    
+    if (useResend) {
+      // Use Resend API for production
+      console.log(`[EMAIL] Resend config - FROM: ${FROM_EMAIL}`);
+      
+      const { data, error } = await getResend().emails.send({
+        from: `Women Safety System <${FROM_EMAIL}>`,
+        to: email,
+        subject: 'Verify Your Email - Women Safety System',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
+              <p style="color: #666; margin-top: 5px;">Email Verification</p>
             </div>
-            <p style="font-size: 14px; color: #888; text-align: center;">
-              This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
-            </p>
+            <div style="background-color: white; padding: 30px; border-radius: 8px;">
+              <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
+              <p style="font-size: 16px; line-height: 1.6; color: #555;">
+                Thank you for registering! Please use the following OTP to verify your email address:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
+                  ${otp}
+                </div>
+              </div>
+              <p style="font-size: 14px; color: #888; text-align: center;">
+                This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
+              </p>
+            </div>
+            <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+              <p>If you didn't create an account, please ignore this email.</p>
+              <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+            </div>
           </div>
-          <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
-            <p>If you didn't create an account, please ignore this email.</p>
-            <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+        `
+      });
+      
+      if (error) {
+        console.error('[EMAIL] Resend error:', JSON.stringify(error));
+        throw new Error(error.message || 'Resend API error');
+      }
+      
+      console.log(`[EMAIL] ✅ Verification email sent via Resend to ${email}, id: ${data?.id}`);
+      return { success: true };
+    } else {
+      // Use SMTP for development
+      console.log(`[EMAIL] SMTP config - HOST: ${process.env.EMAIL_HOST}, PORT: ${process.env.EMAIL_PORT}, USER: ${process.env.EMAIL_USER}`);
+      
+      const transporter = getTransporter();
+      
+      // Verify connection first
+      await transporter.verify();
+      console.log(`[EMAIL] SMTP connection verified successfully`);
+      
+      const info = await transporter.sendMail({
+        from: `Women Safety System <${FROM_EMAIL}>`,
+        to: email,
+        subject: 'Verify Your Email - Women Safety System',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
+              <p style="color: #666; margin-top: 5px;">Email Verification</p>
+            </div>
+            <div style="background-color: white; padding: 30px; border-radius: 8px;">
+              <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
+              <p style="font-size: 16px; line-height: 1.6; color: #555;">
+                Thank you for registering! Please use the following OTP to verify your email address:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
+                  ${otp}
+                </div>
+              </div>
+              <p style="font-size: 14px; color: #888; text-align: center;">
+                This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
+              </p>
+            </div>
+            <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+              <p>If you didn't create an account, please ignore this email.</p>
+              <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+            </div>
           </div>
-        </div>
-      `
-    });
-    console.log(`[EMAIL] Verification email sent to ${email}, id: ${info?.messageId}`);
-    return { success: true };
+        `
+      });
+      console.log(`[EMAIL] ✅ Verification email sent via SMTP to ${email}, id: ${info?.messageId}`);
+      return { success: true };
+    }
   } catch (error) {
-    console.error('[EMAIL] Verification email failed:', error.message);
-    throw error;
+    console.error(`[EMAIL] ❌ Verification email failed for ${email}:`, error.message);
+    console.error(`[EMAIL] Error details:`, {
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      stack: error.stack
+    });
+    
+    // Provide more specific error messages
+    if (error.code === 'ECONNECTION') {
+      throw new Error('Failed to connect to email server. Please check your network connection and email configuration.');
+    } else if (error.code === 'EAUTH') {
+      throw new Error('Email authentication failed. Please check your email credentials.');
+    } else if (error.code === 'ETIMEDOUT') {
+      throw new Error('Connection to email server timed out. Please try again later.');
+    } else {
+      throw new Error(`Failed to send verification email: ${error.message}`);
+    }
   }
 };
 
