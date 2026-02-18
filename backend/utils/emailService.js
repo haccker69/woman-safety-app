@@ -1,34 +1,17 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// Create reusable transporter
-const createTransporter = () => {
-  const port = parseInt(process.env.EMAIL_PORT) || 465;
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: port,
-    secure: port === 465, // true for 465, false for 587
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD
-    },
-    connectionTimeout: 10000,  // 10 seconds
-    greetingTimeout: 10000,
-    socketTimeout: 15000
-  });
-};
+const getResend = () => new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
 // Send SOS Email Alert
 const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
   try {
-    const transporter = createTransporter();
-    
-    // Google Maps link
+    const resend = getResend();
     const mapLink = `https://www.google.com/maps?q=${lat},${lng}`;
-    
-    // Email content
+
     const emailPromises = guardians.map(guardian => {
-      const mailOptions = {
-        from: `"Women Safety System" <${process.env.EMAIL_USER}>`,
+      return resend.emails.send({
+        from: `Women Safety System <${FROM_EMAIL}>`,
         to: guardian.email,
         subject: '🚨 EMERGENCY SOS ALERT 🚨',
         html: `
@@ -76,18 +59,14 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
         `
       };
       
-      return transporter.sendMail(mailOptions);
+      });
     });
-    
+
     await Promise.all(emailPromises);
     console.log(`SOS emails sent to ${guardians.length} guardians`);
-    
-    return {
-      success: true,
-      message: `SOS alert sent to ${guardians.length} guardian(s)`
-    };
+    return { success: true, message: `SOS alert sent to ${guardians.length} guardian(s)` };
   } catch (error) {
-    console.error('Email sending error:', error);
+    console.error('[EMAIL] SOS email error:', error.message);
     throw new Error('Failed to send SOS email alerts');
   }
 };
@@ -95,10 +74,9 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
 // Send Email Verification OTP
 const sendVerificationEmail = async (email, name, otp) => {
   try {
-    const transporter = createTransporter();
-
-    const mailOptions = {
-      from: `"Women Safety System" <${process.env.EMAIL_USER}>`,
+    const resend = getResend();
+    const { data, error } = await resend.emails.send({
+      from: `Women Safety System <${FROM_EMAIL}>`,
       to: email,
       subject: 'Verify Your Email - Women Safety System',
       html: `
@@ -132,14 +110,17 @@ const sendVerificationEmail = async (email, name, otp) => {
           </div>
         </div>
       `
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
-    console.log(`Verification email sent to ${email}`);
+    if (error) {
+      console.error('[EMAIL] Resend error:', JSON.stringify(error));
+      throw new Error(error.message || 'Resend API error');
+    }
+
+    console.log(`[EMAIL] Verification email sent to ${email}, id: ${data?.id}`);
     return { success: true };
   } catch (error) {
-    console.error('[EMAIL] Verification email error code:', error.code);
-    console.error('[EMAIL] Verification email error message:', error.message);
+    console.error('[EMAIL] Verification email failed:', error.message);
     throw error;
   }
 };
