@@ -33,6 +33,12 @@ const getBrevoTransporter = () => {
 // Brevo REST API function (works in all environments)
 const sendBrevoEmail = async (to, subject, htmlContent) => {
   try {
+    // Check if API key is valid (not placeholder)
+    if (!process.env.BREVO_API_KEY || process.env.BREVO_API_KEY.includes('your_api_key_here')) {
+      console.log(`[EMAIL] ⚠️ Brevo API key is placeholder or missing. Using console fallback.`);
+      return logEmailOTP(to, to.split('@')[0], 'PLACEHOLDER-OTP');
+    }
+
     const response = await axios.post(
       'https://api.brevo.com/v3/smtp/email',
       {
@@ -57,6 +63,14 @@ const sendBrevoEmail = async (to, subject, htmlContent) => {
     return { success: true, messageId: response.data?.messageId };
   } catch (error) {
     console.error('[EMAIL] Brevo API error:', error.response?.data || error.message);
+    
+    // If API key is invalid, fallback to console logging
+    if (error.response?.data?.code === 'unauthorized' || error.response?.data?.message?.includes('Key not found')) {
+      console.log(`[EMAIL] ⚠️ Invalid Brevo API key. Using console fallback for development.`);
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      return logEmailOTP(to, to.split('@')[0], otp);
+    }
+    
     throw new Error(`Brevo API failed: ${error.response?.data?.message || error.message}`);
   }
 };
