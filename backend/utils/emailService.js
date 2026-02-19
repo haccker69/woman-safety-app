@@ -305,7 +305,7 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
 const sendVerificationEmail = async (email, name, otp) => {
   try {
     console.log(`[EMAIL] Attempting to send verification email to ${email}`);
-    console.log(`[EMAIL] Using ${useBrevo ? 'Brevo SMTP' : 'Local SMTP'} for email sending`);
+    console.log(`[EMAIL] Using ${useBrevoSMTP ? 'Brevo SMTP' : 'Local SMTP'} for email sending`);
     
     if (useBrevoSMTP) {
       // Use Brevo SMTP for production (direct SMTP connection)
