@@ -56,12 +56,29 @@ const sendVerificationEmail = async (email, name, otp) => {
   console.log(`[EMAIL] Sending OTP to ${email}`);
 
   const htmlContent = `
-    <div style="font-family: Arial; padding:20px;">
-      <h2>Women Safety System</h2>
-      <p>Hello ${name},</p>
-      <p>Your verification OTP is:</p>
-      <h1 style="color:red;">${otp}</h1>
-      <p>This OTP is valid for 10 minutes.</p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
+        <p style="color: #666; margin-top: 5px;">Email Verification</p>
+      </div>
+      <div style="background-color: white; padding: 30px; border-radius: 8px;">
+        <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
+        <p style="font-size: 16px; line-height: 1.6; color: #555;">
+          Thank you for registering! Please use the following OTP to verify your email address:
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
+            ${otp}
+          </div>
+        </div>
+        <p style="font-size: 14px; color: #888; text-align: center;">
+          This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
+        </p>
+      </div>
+      <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+        <p>If you didn't create an account, please ignore this email.</p>
+        <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+      </div>
     </div>
   `;
 
