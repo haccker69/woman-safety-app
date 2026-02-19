@@ -106,22 +106,26 @@ Add to your server's environment file or deployment script.
 - Check email service logs
 
 ## Recommended Solution
-For production reliability, use **Brevo REST API** (Works in all environments):
+For production reliability, use **Brevo SMTP** (Works with your existing SMTP key):
 
-### Step 1: Set up Brevo Account
-1. Go to https://www.brevo.com and create a free account
-2. Verify your email address
-3. Go to SMTP & API → Your API Keys → Generate New Key
-4. Copy your v3 API key (starts with `xkeysib-`)
+### Step 1: Use Your Brevo SMTP Key
+You already have the SMTP key that starts with `xsmtpsib-` - use it directly!
 
 ### Step 2: Set Production Environment Variables
 Add these to your deployment platform:
 ```bash
 NODE_ENV=production
-BREVO_API_KEY=xkeysib-your_api_key_here
+BREVO_SMTP_KEY=xsmtpsib-your_smtp_key_here
 BREVO_FROM_EMAIL=wommansafety@gmail.com
 EMAIL_USER=wommansafety@gmail.com
 ```
+
+### Why Brevo SMTP?
+- ✅ **Uses Your Existing Key** (no need for API key)
+- ✅ **Direct SMTP Connection** (more reliable)
+- ✅ **No Account Activation Required** (SMTP keys work immediately)
+- ✅ **Free Tier:** 300 emails/day
+- ✅ **Works in Production** (no firewall issues)
 
 ### Why Brevo REST API?
 - ✅ **No SMTP Connection Issues** (works behind firewalls)

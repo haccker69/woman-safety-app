@@ -3,8 +3,8 @@ const axios = require('axios');
 const { Resend } = require('resend');
 const { logEmailOTP, logSOSEmail } = require('./simpleEmailService');
 
-// Use Brevo for production (preferred), fallback to SendGrid if Brevo not activated
-const useBrevo = process.env.BREVO_API_KEY && process.env.NODE_ENV === 'production';
+// Use Brevo SMTP for production (preferred), fallback to SendGrid if needed
+const useBrevoSMTP = (process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY) && process.env.NODE_ENV === 'production';
 const useSendGrid = process.env.SENDGRID_API_KEY && process.env.NODE_ENV === 'production';
 
 const getResend = () => new Resend(process.env.RESEND_API_KEY);
@@ -15,8 +15,8 @@ const getBrevoTransporter = () => {
     port: 587,
     secure: false, // TLS
     auth: {
-      user: process.env.BREVO_API_KEY,
-      pass: process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY, // Brevo uses API key as password
+      user: process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY,
+      pass: process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY, // Brevo SMTP key as both user and pass
     },
     connectionTimeout: 120000,
     greetingTimeout: 60000,
@@ -173,7 +173,7 @@ const getFallbackTransporter = () => {
   });
 };
 
-const FROM_EMAIL = useBrevo 
+const FROM_EMAIL = useBrevoSMTP 
   ? (process.env.BREVO_FROM_EMAIL || process.env.EMAIL_USER)
   : (useSendGrid 
     ? (process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER)
@@ -184,9 +184,13 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
   try {
     let transporter;
     
-    if (useBrevo) {
-      // Use Brevo REST API for production (works in all environments)
-      console.log(`[EMAIL] Using Brevo REST API for SOS alerts`);
+    if (useBrevoSMTP) {
+      // Use Brevo SMTP for production
+      console.log(`[EMAIL] Using Brevo SMTP for SOS alerts`);
+      
+      const brevoTransporter = getBrevoTransporter();
+      await brevoTransporter.verify();
+      console.log(`[EMAIL] Brevo SMTP connection verified successfully`);
       
       const sosHtmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fff3cd; border: 2px solid #ff0000;">
@@ -224,13 +228,18 @@ const sendSOSEmail = async (guardians, userName, userPhone, lat, lng) => {
         </div>
       `;
       
-      // Send to all guardians using Brevo API
-      const emailPromises = guardians.map(guardian => 
-        sendBrevoEmail(guardian.email, '🚨 EMERGENCY SOS ALERT 🚨', sosHtmlContent)
+      // Send to all guardians using Brevo SMTP
+      const emailPromises = guardians.map(guardian =>
+        brevoTransporter.sendMail({
+          from: `Women Safety System <${FROM_EMAIL}>`,
+          to: guardian.email,
+          subject: '🚨 EMERGENCY SOS ALERT 🚨',
+          html: sosHtmlContent
+        })
       );
       
       await Promise.all(emailPromises);
-      console.log(`[EMAIL] ✅ SOS emails sent via Brevo API to ${guardians.length} guardians`);
+      console.log(`[EMAIL] ✅ SOS emails sent via Brevo SMTP to ${guardians.length} guardians`);
       return { success: true, message: `SOS alert sent to ${guardians.length} guardian(s)` };
     } else {
       // Use local SMTP for development
@@ -298,38 +307,50 @@ const sendVerificationEmail = async (email, name, otp) => {
     console.log(`[EMAIL] Attempting to send verification email to ${email}`);
     console.log(`[EMAIL] Using ${useBrevo ? 'Brevo SMTP' : 'Local SMTP'} for email sending`);
     
-    if (useBrevo) {
-      // Use Brevo REST API for production (works in all environments)
-      console.log(`[EMAIL] Using Brevo REST API - FROM: ${FROM_EMAIL}`);
+    if (useBrevoSMTP) {
+      // Use Brevo SMTP for production (direct SMTP connection)
+      console.log(`[EMAIL] Using Brevo SMTP - FROM: ${FROM_EMAIL}`);
       
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
-            <p style="color: #666; margin-top: 5px;">Email Verification</p>
-          </div>
-          <div style="background-color: white; padding: 30px; border-radius: 8px;">
-            <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
-            <p style="font-size: 16px; line-height: 1.6; color: #555;">
-              Thank you for registering! Please use the following OTP to verify your email address:
-            </p>
-            <div style="text-align: center; margin: 30px 0;">
-              <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
-                ${otp}
-              </div>
+      const transporter = getBrevoTransporter();
+      
+      // Verify connection first
+      await transporter.verify();
+      console.log(`[EMAIL] Brevo SMTP connection verified successfully`);
+      
+      const info = await transporter.sendMail({
+        from: `Women Safety System <${FROM_EMAIL}>`,
+        to: email,
+        subject: 'Verify Your Email - Women Safety System',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h1 style="color: #dc2626; margin: 0;">🛡️ Women Safety System</h1>
+              <p style="color: #666; margin-top: 5px;">Email Verification</p>
             </div>
-            <p style="font-size: 14px; color: #888; text-align: center;">
-              This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
-            </p>
+            <div style="background-color: white; padding: 30px; border-radius: 8px;">
+              <h2 style="color: #333; margin-top: 0;">Hello ${name},</h2>
+              <p style="font-size: 16px; line-height: 1.6; color: #555;">
+                Thank you for registering! Please use the following OTP to verify your email address:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <div style="display: inline-block; padding: 15px 40px; background-color: #dc2626; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
+                  ${otp}
+                </div>
+              </div>
+              <p style="font-size: 14px; color: #888; text-align: center;">
+                This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.
+              </p>
+            </div>
+            <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+              <p>If you didn't create an account, please ignore this email.</p>
+              <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
+            </div>
           </div>
-          <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
-            <p>If you didn't create an account, please ignore this email.</p>
-            <p>Women Safety & Security System &copy; ${new Date().getFullYear()}</p>
-          </div>
-        </div>
-      `;
+        `
+      });
       
-      return await sendBrevoEmail(email, 'Verify Your Email - Women Safety System', htmlContent);
+      console.log(`[EMAIL] ✅ Verification email sent via Brevo SMTP to ${email}, id: ${info?.messageId}`);
+      return { success: true };
     } else if (useSendGrid) {
       // Use SendGrid REST API as fallback
       console.log(`[EMAIL] Using SendGrid REST API - FROM: ${FROM_EMAIL}`);
