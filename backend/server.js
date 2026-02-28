@@ -18,6 +18,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'https://haccker69.github.io',
+  'https://woman-safety-app-alpha.vercel.app',
 ].filter(Boolean);
 
 app.use(cors({
